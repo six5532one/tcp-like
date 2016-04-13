@@ -56,14 +56,14 @@ class Sender    {
 
     public static void main(String[] args)  {
         try {
-        String infileName = args[0];
-        String remoteIPStr = args[1];
-        int remotePort = Integer.parseInt(args[2]);
-        int ackPort = Integer.parseInt(args[3]);
-        String logfileName = args[4];
-        int windowSize = Integer.parseInt(args[5]);
-        Sender tcplikeSender = new Sender(remoteIPStr, remotePort, ackPort, windowSize);
-        tcplikeSender.sendFile(infileName, logfileName);
+            String infileName = args[0];
+            String remoteIPStr = args[1];
+            int remotePort = Integer.parseInt(args[2]);
+            int ackPort = Integer.parseInt(args[3]);
+            String logfileName = args[4];
+            int windowSize = Integer.parseInt(args[5]);
+            Sender tcplikeSender = new Sender(remoteIPStr, remotePort, ackPort, windowSize);
+            tcplikeSender.sendFile(infileName, logfileName);
         } catch (ArrayIndexOutOfBoundsException e)  {
             System.out.println("Usage: java Sender <filename> <remote_IP> <remote_port> <ack_port_num> <log_filename> <window_size>");
         }
