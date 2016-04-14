@@ -1,3 +1,5 @@
+import java.net.DatagramPacket;
+import java.io.IOException;
 import java.net.SocketException;
 import java.net.DatagramSocket;
 import java.net.UnknownHostException;
@@ -7,6 +9,8 @@ import java.io.FileNotFoundException;
 import java.io.File;
 
 class Receiver  {
+    public static final int MSS = 576;
+    public static final int HEADERSIZE = 20;
     private int nextExpected = 0;
     private DatagramSocket socket;
     private InetAddress senderIP;
@@ -31,8 +35,22 @@ class Receiver  {
     private void writeFile(String outfileName, String logfileName)  {
         try {
             FileOutputStream fout = new FileOutputStream(new File(outfileName));
+            DatagramPacket receivePacket;
+            byte[] receiveData;
+            byte[] received;
+            while (true)  {
+                //receiveData = new byte[MSS+HEADERSIZE];
+                receiveData = new byte[MSS];
+                receivePacket = new DatagramPacket(receiveData, receiveData.length);
+                socket.receive(receivePacket);
+                received = receivePacket.getData();
+                fout.write(received);
+            }
         } catch (FileNotFoundException e)   {
             System.out.println("specified output file exists but is a directory rather than a regular file, does not exist but cannot be created, or cannot be opened for any other reason");
+            System.exit(0);
+        } catch (IOException e) {
+            System.out.println("I/O error occurred while reading from socket or writing to file");
             System.exit(0);
         }
     }

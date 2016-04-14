@@ -78,7 +78,11 @@ class Sender    {
            while ((numBytesRead = fileInput.read(sendData)) > 0)    {
                sendPacket = new DatagramPacket(sendData, numBytesRead, destIP, destPort);
                outSocket.send(sendPacket);
+               sendData = new byte[MSS];
            }
+           // send FIN request
+           //TODO SET FIN header field to 1
+           //TODO wait for receiver's shutdown segment
        } catch (FileNotFoundException e) {
            System.out.println("file does not exist, is a directory rather than a regular file, or for some other reason cannot be opened for reading");
            System.exit(0);
