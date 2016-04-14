@@ -39,11 +39,13 @@ class Receiver  {
             byte[] receiveData;
             byte[] received;
             while (true)  {
-                //receiveData = new byte[MSS+HEADERSIZE];
-                receiveData = new byte[MSS];
+                receiveData = new byte[HEADERSIZE + MSS];
+                System.out.println(receiveData.length);
+                //receiveData = new byte[MSS];
                 receivePacket = new DatagramPacket(receiveData, receiveData.length);
                 socket.receive(receivePacket);
                 received = receivePacket.getData();
+                System.out.println(received.length);
                 fout.write(received);
             }
         } catch (FileNotFoundException e)   {
