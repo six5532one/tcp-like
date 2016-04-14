@@ -70,15 +70,19 @@ class Sender    {
    }
 
    private void sendFile(String infileName, String logfileName) {
-       byte[] sendData = new byte[MSS];
+       byte[] payload = new byte[MSS];
+       byte[] header;
+       byte[] sendData = new byte[MSS + HEADERSIZE];
        try  {
            FileInputStream fileInput = new FileInputStream(new File(infileName));
            DatagramPacket sendPacket;
            int numBytesRead;
-           while ((numBytesRead = fileInput.read(sendData)) > 0)    {
+           while ((numBytesRead = fileInput.read(payload)) > 0)    {
+               header = getHeader();
                sendPacket = new DatagramPacket(sendData, numBytesRead, destIP, destPort);
                outSocket.send(sendPacket);
-               sendData = new byte[MSS];
+               payload = new byte[MSS];
+               sendData = new byte[MSS + HEADERSIZE];
            }
            // send FIN request
            //TODO SET FIN header field to 1
