@@ -14,6 +14,7 @@ class Sender    {
     public static final int INITIAL_TIMEOUT_INT = 5000;
     // maximum segment size is 576 bytes
     public static final int MSS = 576;
+    public static final int HEADERSIZE = 20;
     private int nextSeqNum = 0;
     private int numDupAcks = 0;
     private HashMap<Integer, Long> inTransitSendTimes;
@@ -24,7 +25,7 @@ class Sender    {
     private int retransmissionTimeoutInt = 0;
     private int windowSize;
     private InetAddress destIP;
-    private int destPort, ackPort;
+    private int destPort, ackPort, sourcePort;
     private DatagramSocket outSocket;
     DatagramSocket ackSocket;
 
@@ -47,6 +48,9 @@ class Sender    {
         // Datagram socket for writing
         try {
             outSocket = new DatagramSocket();
+            sourcePort = outSocket.getLocalPort();
+            System.out.print("source port ");
+            System.out.print(sourcePort);
             ackSocket = new DatagramSocket(ackPort);
         } catch (SocketException e) {
             System.out.println("socket could not be opened");
@@ -54,6 +58,27 @@ class Sender    {
         }
     }
 
+    private byte[] getHeader()  {
+        // write source port
+        byte[] sourcePortField = BitWrangler.toByteArray(sourcePort, 2);
+        // write destination port
+        byte[] destPortField = BitWrangler.toByteArray(destPort, 2);
+        // write sequence number
+        byte[] seqNumField = BitWrangler.toByteArray(nextSeqNum, 4);
+        // write checksum
+        // set header length field
+        byte[] header = new byte[HEADERSIZE];
+        header[0] = sourcePortField[0];
+        header[1] = sourcePortField[1];
+        header[2] = destPortField[0];
+        header[3] = destPortField[1];
+        header[4] = seqNumField[0];
+        header[5] = seqNumField[1];
+        header[6] = seqNumField[2];
+        header[7] = seqNumField[3];
+        return header;
+    }
+    
     public static void main(String[] args)  {
         try {
             String infileName = args[0];
@@ -72,15 +97,22 @@ class Sender    {
    private void sendFile(String infileName, String logfileName) {
        byte[] payload = new byte[MSS];
        byte[] header;
-       byte[] sendData = new byte[MSS + HEADERSIZE];
+       byte[] sendData = new byte[HEADERSIZE + MSS];
        try  {
            FileInputStream fileInput = new FileInputStream(new File(infileName));
            DatagramPacket sendPacket;
            int numBytesRead;
            while ((numBytesRead = fileInput.read(payload)) > 0)    {
                header = getHeader();
+               // copy header data into `sendData`
+               for (int i=0; i<HEADERSIZE; i++)
+                   sendData[i] = header[i];
+               // copy payload data into `sendData`
+               for (int i=0; i<MSS; i++)
+                   sendData[HEADERSIZE + i] = payload[i];
                sendPacket = new DatagramPacket(sendData, numBytesRead, destIP, destPort);
                outSocket.send(sendPacket);
+               nextSeqNum++;
                payload = new byte[MSS];
                sendData = new byte[MSS + HEADERSIZE];
            }
