@@ -31,7 +31,11 @@ class BitWrangler  {
                 bits.set(numBits - i - 1 - margin);
         }
         byte[] bytes = BitWrangler.toByteArray(bits);
-        return bytes;
+        int padding = numBytes - bytes.length;
+        byte[] result = new byte[numBytes];
+        for (int i=0; i<bytes.length; i++)
+            result[padding+i] = bytes[i];
+        return result;
     }
     
     public static int toInt(byte[] bytes)   {

@@ -49,8 +49,6 @@ class Sender    {
         try {
             outSocket = new DatagramSocket();
             sourcePort = outSocket.getLocalPort();
-            System.out.print("source port ");
-            System.out.print(sourcePort);
             ackSocket = new DatagramSocket(ackPort);
         } catch (SocketException e) {
             System.out.println("socket could not be opened");

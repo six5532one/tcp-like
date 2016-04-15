@@ -1,3 +1,4 @@
+import java.util.Arrays;
 import java.net.DatagramPacket;
 import java.io.IOException;
 import java.net.SocketException;
@@ -45,7 +46,9 @@ class Receiver  {
                 receivePacket = new DatagramPacket(receiveData, receiveData.length);
                 socket.receive(receivePacket);
                 received = receivePacket.getData();
-                System.out.println(received.length);
+                int sourcePort = BitWrangler.toInt(Arrays.copyOfRange(received, 0, 2));
+                int destPort = BitWrangler.toInt(Arrays.copyOfRange(received, 2, 4));
+                int seqNum = BitWrangler.toInt(Arrays.copyOfRange(received, 4, 8));
                 fout.write(received);
             }
         } catch (FileNotFoundException e)   {
