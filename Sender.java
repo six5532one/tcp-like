@@ -125,12 +125,11 @@ class Sender    {
            header = getHeader();
            // set FIN header field to 1
            BitSet bits = new BitSet(8);
-           bits.set(7);
            bits.set(0);
            header[13] = BitWrangler.toByteArray(bits)[0];
            sendPacket = new DatagramPacket(header, header.length, destIP, destPort);
            outSocket.send(sendPacket);
-           //TODO wait for receiver's shutdown segment
+           // wait for receiver's shutdown segment
            DatagramPacket finACK = new DatagramPacket(header, header.length);
            outSocket.receive(finACK);   
            System.out.println("received finACK. closing socket...");
