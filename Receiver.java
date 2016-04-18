@@ -33,6 +33,11 @@ class Receiver  {
         this.senderPort = senderPort;
     }
 
+    private boolean isFinSegment(byte[] headers)  {
+        byte b = headers[13];
+        return (b & 1) != 0;
+    }
+
     private void writeFile(String outfileName, String logfileName)  {
         try {
             FileOutputStream fout = new FileOutputStream(new File(outfileName));
@@ -43,6 +48,10 @@ class Receiver  {
                 receivePacket = new DatagramPacket(receiveData, receiveData.length);
                 socket.receive(receivePacket);
                 byte[] received = receivePacket.getData();
+                if (isFinSegment(Arrays.copyOfRange(received, 0, HEADERSIZE))) {
+                    System.out.println("Received fin segment");
+                    break;
+                }
                 int sourcePort = BitWrangler.toInt(Arrays.copyOfRange(received, 0, 2));
                 int destPort = BitWrangler.toInt(Arrays.copyOfRange(received, 2, 4));
                 int seqNum = BitWrangler.toInt(Arrays.copyOfRange(received, 4, 8));

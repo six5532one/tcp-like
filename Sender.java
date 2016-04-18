@@ -1,3 +1,4 @@
+import java.util.BitSet;
 import java.util.HashMap;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -47,7 +48,8 @@ class Sender    {
         destPort = remotePort;
         // Datagram socket for writing
         try {
-            outSocket = new DatagramSocket();
+            // bind to this port for testing on link simulator
+            outSocket = new DatagramSocket(5555);
             sourcePort = outSocket.getLocalPort();
             ackSocket = new DatagramSocket(ackPort);
         } catch (SocketException e) {
@@ -77,6 +79,10 @@ class Sender    {
         return header;
     }
     
+    private void displayStats() {
+        System.out.println("TODO print stats at end");
+    }
+
     public static void main(String[] args)  {
         try {
             String infileName = args[0];
@@ -87,6 +93,7 @@ class Sender    {
             int windowSize = Integer.parseInt(args[5]);
             Sender tcplikeSender = new Sender(remoteIPStr, remotePort, ackPort, windowSize);
             tcplikeSender.sendFile(infileName, logfileName);
+            tcplikeSender.displayStats();
         } catch (ArrayIndexOutOfBoundsException e)  {
             System.out.println("Usage: java Sender <filename> <remote_IP> <remote_port> <ack_port_num> <log_filename> <window_size>");
         }
@@ -115,8 +122,17 @@ class Sender    {
                sendData = new byte[MSS + HEADERSIZE];
            }
            // send FIN request
-           //TODO SET FIN header field to 1
+           header = getHeader();
+           // set FIN header field to 1
+           BitSet bits = new BitSet(8);
+           bits.set(7);
+           bits.set(0);
+           header[13] = BitWrangler.toByteArray(bits)[0];
+           sendPacket = new DatagramPacket(header, header.length, destIP, destPort);
+           outSocket.send(sendPacket);
            //TODO wait for receiver's shutdown segment
+           
+           //outSocket.close()
        } catch (FileNotFoundException e) {
            System.out.println("file does not exist, is a directory rather than a regular file, or for some other reason cannot be opened for reading");
            System.exit(0);
