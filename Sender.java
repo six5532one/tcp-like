@@ -63,8 +63,8 @@ class Sender    {
         byte[] destPortField = BitWrangler.toByteArray(destPort, 2);
         // write sequence number
         byte[] seqNumField = BitWrangler.toByteArray(nextSeqNum, 4);
-        // write checksum
-        // set header length field
+        // TODO write checksum
+        // TODO set header length field
         byte[] header = new byte[HEADERSIZE];
         header[0] = sourcePortField[0];
         header[1] = sourcePortField[1];
@@ -108,7 +108,7 @@ class Sender    {
                // copy payload data into `sendData`
                for (int i=0; i<MSS; i++)
                    sendData[HEADERSIZE + i] = payload[i];
-               sendPacket = new DatagramPacket(sendData, numBytesRead, destIP, destPort);
+               sendPacket = new DatagramPacket(sendData, sendData.length, destIP, destPort);
                outSocket.send(sendPacket);
                nextSeqNum++;
                payload = new byte[MSS];

@@ -38,18 +38,15 @@ class Receiver  {
             FileOutputStream fout = new FileOutputStream(new File(outfileName));
             DatagramPacket receivePacket;
             byte[] receiveData;
-            byte[] received;
             while (true)  {
                 receiveData = new byte[HEADERSIZE + MSS];
-                System.out.println(receiveData.length);
-                //receiveData = new byte[MSS];
                 receivePacket = new DatagramPacket(receiveData, receiveData.length);
                 socket.receive(receivePacket);
-                received = receivePacket.getData();
+                byte[] received = receivePacket.getData();
                 int sourcePort = BitWrangler.toInt(Arrays.copyOfRange(received, 0, 2));
                 int destPort = BitWrangler.toInt(Arrays.copyOfRange(received, 2, 4));
                 int seqNum = BitWrangler.toInt(Arrays.copyOfRange(received, 4, 8));
-                fout.write(received);
+                fout.write(Arrays.copyOfRange(received, HEADERSIZE, received.length));
             }
         } catch (FileNotFoundException e)   {
             System.out.println("specified output file exists but is a directory rather than a regular file, does not exist but cannot be created, or cannot be opened for any other reason");
