@@ -1,3 +1,4 @@
+import java.util.BitSet;
 import java.util.Arrays;
 import java.net.DatagramPacket;
 import java.io.IOException;
@@ -46,8 +47,15 @@ class Receiver  {
         byte[] destPortField = BitWrangler.toByteArray(destPort, 2);
         // write ACK number
         byte[] ackNumField = BitWrangler.toByteArray(nextExpected, 4);
-        // write checksum
         // set header length field
+        BitSet bits = new BitSet(8);
+        bits.set(6);
+        bits.set(4);
+        byte headerLength = BitWrangler.toByteArray(bits)[0];
+        // set ACK flag
+        BitSet flagBits = new BitSet(8);
+        flagBits.set(4);
+        byte flags = BitWrangler.toByteArray(flagBits)[0];
         byte[] header = new byte[HEADERSIZE];
         header[0] = sourcePortField[0];
         header[1] = sourcePortField[1];
@@ -57,6 +65,8 @@ class Receiver  {
         header[9] = ackNumField[1];
         header[10] = ackNumField[2];
         header[11] = ackNumField[3];
+        header[12] = headerLength;
+        header[13] = flags;
         return header;
     }
 
