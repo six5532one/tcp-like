@@ -131,8 +131,10 @@ class Sender    {
            sendPacket = new DatagramPacket(header, header.length, destIP, destPort);
            outSocket.send(sendPacket);
            //TODO wait for receiver's shutdown segment
-           
-           //outSocket.close()
+           DatagramPacket finACK = new DatagramPacket(header, header.length);
+           outSocket.receive(finACK);   
+           System.out.println("received finACK. closing socket...");
+           outSocket.close();
        } catch (FileNotFoundException e) {
            System.out.println("file does not exist, is a directory rather than a regular file, or for some other reason cannot be opened for reading");
            System.exit(0);

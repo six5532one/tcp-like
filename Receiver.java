@@ -14,12 +14,12 @@ class Receiver  {
     public static final int HEADERSIZE = 20;
     private int nextExpected = 0;
     private DatagramSocket socket;
-    private InetAddress senderIP;
-    private int senderPort; 
+    private InetAddress destIP;
+    private int destPort, sourcePort; 
 
     public Receiver(int listeningPort, String senderIPStr, int senderPort)   { 
         try {
-            this.senderIP = InetAddress.getByName(senderIPStr);
+            this.destIP = InetAddress.getByName(senderIPStr);
         } catch (UnknownHostException e)    {
             System.out.println("no IP address for the specified remote host could be found");
             System.exit(0);
@@ -30,7 +30,8 @@ class Receiver  {
             System.out.println("socket could not be opened, or the socket could not bind to the specified listening port");
             System.exit(0);
         }
-        this.senderPort = senderPort;
+        this.destPort = senderPort;
+        this.sourcePort = listeningPort;
     }
 
     private boolean isFinSegment(byte[] headers)  {
@@ -38,11 +39,33 @@ class Receiver  {
         return (b & 1) != 0;
     }
 
+    private byte[] getHeader()    {
+        // write source port
+        byte[] sourcePortField = BitWrangler.toByteArray(sourcePort, 2);
+        // write destination port
+        byte[] destPortField = BitWrangler.toByteArray(destPort, 2);
+        // write ACK number
+        byte[] ackNumField = BitWrangler.toByteArray(nextExpected, 4);
+        // write checksum
+        // set header length field
+        byte[] header = new byte[HEADERSIZE];
+        header[0] = sourcePortField[0];
+        header[1] = sourcePortField[1];
+        header[2] = destPortField[0];
+        header[3] = destPortField[1];
+        header[8] = ackNumField[0];
+        header[9] = ackNumField[1];
+        header[10] = ackNumField[2];
+        header[11] = ackNumField[3];
+        return header;
+    }
+
     private void writeFile(String outfileName, String logfileName)  {
         try {
             FileOutputStream fout = new FileOutputStream(new File(outfileName));
             DatagramPacket receivePacket;
             byte[] receiveData;
+            byte[] header;
             while (true)  {
                 receiveData = new byte[HEADERSIZE + MSS];
                 receivePacket = new DatagramPacket(receiveData, receiveData.length);
@@ -50,6 +73,13 @@ class Receiver  {
                 byte[] received = receivePacket.getData();
                 if (isFinSegment(Arrays.copyOfRange(received, 0, HEADERSIZE))) {
                     System.out.println("Received fin segment");
+                    // find out which port the FIN segment came from
+                    byte[] FINSourceBytes = Arrays.copyOfRange(received, 0, 2);
+                    int FINSourcePort = BitWrangler.toInt(FINSourceBytes);
+                    // respond with ACK
+                    header = getHeader();
+                    DatagramPacket finACK = new DatagramPacket(header, header.length, destIP, FINSourcePort);
+                    socket.send(finACK);
                     break;
                 }
                 int sourcePort = BitWrangler.toInt(Arrays.copyOfRange(received, 0, 2));
