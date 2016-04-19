@@ -52,6 +52,8 @@ class Sender    {
             outSocket = new DatagramSocket(5555);
             sourcePort = outSocket.getLocalPort();
             ackSocket = new DatagramSocket(ackPort);
+            AckListener ackListener = new AckListener(this);
+            new Thread(ackListener).start();
         } catch (SocketException e) {
             System.out.println("socket could not be opened");
             System.exit(0);
@@ -139,11 +141,12 @@ class Sender    {
            outSocket.receive(finACK);   
            System.out.println("received finACK. closing socket...");
            outSocket.close();
+           ackSocket.close();
        } catch (FileNotFoundException e) {
            System.out.println("file does not exist, is a directory rather than a regular file, or for some other reason cannot be opened for reading");
            System.exit(0);
        } catch (IOException io) {
-           System.out.println("I/O error occurred while reading from file or writing to socket");
+           System.out.println("SenderThread: I/O error occurred while reading from file or writing to socket");
            System.exit(0);
        }
    }

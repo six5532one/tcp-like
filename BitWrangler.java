@@ -2,6 +2,10 @@ import java.util.BitSet;
 import java.nio.ByteBuffer;
 
 class BitWrangler  {
+    public static boolean isCorrupted(byte[] entireSegment) {
+        return false;
+    }
+
     public static int fromByteArray(byte[] bytes) {
         return ByteBuffer.wrap(bytes).getInt();
     }

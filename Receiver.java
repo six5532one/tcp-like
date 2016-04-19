@@ -73,10 +73,6 @@ class Receiver  {
         return header;
     }
 
-    private boolean isCorrupted(byte[] entireSegment)   {
-        return false;
-    }
-
     private void writeFile(String outfileName, String logfileName)  {
         try {
             FileOutputStream fout = new FileOutputStream(new File(outfileName));
@@ -88,7 +84,7 @@ class Receiver  {
                 receivePacket = new DatagramPacket(receiveData, receiveData.length);
                 socket.receive(receivePacket);
                 byte[] received = receivePacket.getData();
-                if (!isCorrupted(received)) {
+                if (!BitWrangler.isCorrupted(received)) {
                     if (isFinSegment(Arrays.copyOfRange(received, 0, HEADERSIZE))) {
                         System.out.println("Received fin segment");
                         // find out which port the FIN segment came from
@@ -105,13 +101,26 @@ class Receiver  {
                     int seqNum = BitWrangler.toInt(Arrays.copyOfRange(received, 4, 8));
                     byte[] payload = Arrays.copyOfRange(received, HEADERSIZE, received.length);
                     fout.write(payload);
-                }
+                }   // not corrupted
+                sendACK(socket);
             }
         } catch (FileNotFoundException e)   {
             System.out.println("specified output file exists but is a directory rather than a regular file, does not exist but cannot be created, or cannot be opened for any other reason");
             System.exit(0);
         } catch (IOException e) {
             System.out.println("I/O error occurred while reading from socket or writing to file");
+            System.exit(0);
+        }
+    }
+
+    private void sendACK(DatagramSocket socket)    {
+        byte[] header = getHeader();
+        DatagramPacket ack = new DatagramPacket(header, header.length, destIP, destPort);
+        System.out.println("sending ack");
+        try {
+            socket.send(ack);
+        } catch (IOException e) {
+            System.out.println("I/O error occurred while sending ACK. Shutting down...");
             System.exit(0);
         }
     }
