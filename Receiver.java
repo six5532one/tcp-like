@@ -1,3 +1,4 @@
+import java.util.HashMap;
 import java.util.BitSet;
 import java.util.Arrays;
 import java.net.DatagramPacket;
@@ -14,6 +15,7 @@ class Receiver  {
     public static final int MSS = 576;
     public static final int HEADERSIZE = 20;
     private int nextExpected = 0;
+    private HashMap<Integer, byte[]> buffer;
     private DatagramSocket socket;
     private InetAddress destIP;
     private int destPort, sourcePort; 
@@ -33,6 +35,7 @@ class Receiver  {
         }
         this.destPort = senderPort;
         this.sourcePort = listeningPort;
+        buffer = new HashMap<Integer, byte[]>();
     }
 
     private boolean isFinSegment(byte[] headers)  {
@@ -70,6 +73,10 @@ class Receiver  {
         return header;
     }
 
+    private boolean isCorrupted(byte[] entireSegment)   {
+        return false;
+    }
+
     private void writeFile(String outfileName, String logfileName)  {
         try {
             FileOutputStream fout = new FileOutputStream(new File(outfileName));
@@ -81,21 +88,24 @@ class Receiver  {
                 receivePacket = new DatagramPacket(receiveData, receiveData.length);
                 socket.receive(receivePacket);
                 byte[] received = receivePacket.getData();
-                if (isFinSegment(Arrays.copyOfRange(received, 0, HEADERSIZE))) {
-                    System.out.println("Received fin segment");
-                    // find out which port the FIN segment came from
-                    byte[] FINSourceBytes = Arrays.copyOfRange(received, 0, 2);
-                    int FINSourcePort = BitWrangler.toInt(FINSourceBytes);
-                    // respond with ACK
-                    header = getHeader();
-                    DatagramPacket finACK = new DatagramPacket(header, header.length, destIP, FINSourcePort);
-                    socket.send(finACK);
-                    break;
+                if (!isCorrupted(received)) {
+                    if (isFinSegment(Arrays.copyOfRange(received, 0, HEADERSIZE))) {
+                        System.out.println("Received fin segment");
+                        // find out which port the FIN segment came from
+                        byte[] FINSourceBytes = Arrays.copyOfRange(received, 0, 2);
+                        int FINSourcePort = BitWrangler.toInt(FINSourceBytes);
+                        // respond with ACK
+                        header = getHeader();
+                        DatagramPacket finACK = new DatagramPacket(header, header.length, destIP, FINSourcePort);
+                        socket.send(finACK);
+                        break;
+                    }
+                    int sourcePort = BitWrangler.toInt(Arrays.copyOfRange(received, 0, 2));
+                    int destPort = BitWrangler.toInt(Arrays.copyOfRange(received, 2, 4));
+                    int seqNum = BitWrangler.toInt(Arrays.copyOfRange(received, 4, 8));
+                    byte[] payload = Arrays.copyOfRange(received, HEADERSIZE, received.length);
+                    fout.write(payload);
                 }
-                int sourcePort = BitWrangler.toInt(Arrays.copyOfRange(received, 0, 2));
-                int destPort = BitWrangler.toInt(Arrays.copyOfRange(received, 2, 4));
-                int seqNum = BitWrangler.toInt(Arrays.copyOfRange(received, 4, 8));
-                fout.write(Arrays.copyOfRange(received, HEADERSIZE, received.length));
             }
         } catch (FileNotFoundException e)   {
             System.out.println("specified output file exists but is a directory rather than a regular file, does not exist but cannot be created, or cannot be opened for any other reason");
