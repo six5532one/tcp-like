@@ -100,7 +100,25 @@ class Receiver  {
                     int destPort = BitWrangler.toInt(Arrays.copyOfRange(received, 2, 4));
                     int seqNum = BitWrangler.toInt(Arrays.copyOfRange(received, 4, 8));
                     byte[] payload = Arrays.copyOfRange(received, HEADERSIZE, received.length);
-                    fout.write(payload);
+                    if (seqNum > nextExpected)  {
+                        //buffer out-of-order packet
+                        buffer.put(seqNum, payload);
+                    }
+                    else if (seqNum == nextExpected)    {
+                        fout.write(payload);
+                        // write buffered, contiguous packets to outfile
+                        byte[] toWrite;
+                        int receivedSeqNum = seqNum + 1;
+                        while (true)    {
+                            toWrite = buffer.remove(receivedSeqNum);
+                            if (toWrite == null)    {
+                                nextExpected = receivedSeqNum;
+                                break;
+                            }
+                            fout.write(toWrite);
+                            receivedSeqNum++;
+                        }   //done writing buffered data and updating buffer
+                    }
                 }   // not corrupted
                 sendACK(socket);
             }
