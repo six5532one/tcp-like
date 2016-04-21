@@ -134,7 +134,7 @@ class Receiver  {
     private void sendACK(DatagramSocket socket)    {
         byte[] header = getHeader();
         DatagramPacket ack = new DatagramPacket(header, header.length, destIP, destPort);
-        System.out.println("sending ack");
+        System.out.println("sending ack " + Integer.toString(nextExpected));
         try {
             socket.send(ack);
         } catch (IOException e) {

@@ -12,7 +12,7 @@ import java.io.IOException;
 
 class Sender    {
     // before computing timeout interval dynamically, initialize to 5s
-    public static final int INITIAL_TIMEOUT_INT = 5000;
+    public static final long BOOTSTRAP_TIMEOUT = 5000;
     // maximum segment size is 576 bytes
     public static final int MSS = 576;
     public static final int HEADERSIZE = 20;
@@ -20,15 +20,40 @@ class Sender    {
     private int numDupAcks = 0;
     private HashMap<Integer, Long> inTransitSendTimes;
     private HashMap<Integer, DatagramPacket> inTransitPackets;
-    private int estimatedRTT = 0;
-    private int devRTT = 0;
+    private long estimatedRTT = -1;
+    private long devRTT = -1;
     // provide a limited form of congestion control
-    private int retransmissionTimeoutInt = 0;
+    private long retransmissionTimeoutInt = -1; 
     private int windowSize;
     private InetAddress destIP;
     private int destPort, ackPort, sourcePort;
     private DatagramSocket outSocket;
     DatagramSocket ackSocket;
+    Timer timer;
+    Object LOCK;
+
+    private long getTimeoutInt()    {
+        if (estimatedRTT < 0 || devRTT < 0)
+            return BOOTSTRAP_TIMEOUT;
+        else
+            return estimatedRTT + 4 * devRTT;
+    }
+
+    private void updateEstimatedRTT(long sample)    {
+        if (estimatedRTT < 0)
+            estimatedRTT = sample;
+        else
+            estimatedRTT = (long)(0.875 * estimatedRTT) + (long)(0.125 * sample);
+    }
+
+    private void updateDevRTT(long sample)  {
+        if (estimatedRTT > 0)   {
+            if (devRTT < 0)
+                devRTT = Math.abs(estimatedRTT - sample);
+            else
+                devRTT = (long)(0.75 * devRTT) + (long)(0.25 * Math.abs(estimatedRTT - sample));
+        }
+    }
 
     public Sender(String remoteIPStr, int remotePort, int ackPort, int windowSize) {
         this.windowSize = windowSize;
@@ -46,6 +71,8 @@ class Sender    {
             System.exit(0);
         }
         destPort = remotePort;
+        LOCK = new Object();
+        timer = new Timer(this, BOOTSTRAP_TIMEOUT);
         // Datagram socket for writing
         try {
             // bind to this port for testing on link simulator
@@ -104,6 +131,10 @@ class Sender    {
             System.out.println("Usage: java Sender <filename> <remote_IP> <remote_port> <ack_port_num> <log_filename> <window_size>");
         }
    }
+   
+   private boolean fallsInWindow()  {
+       return false;
+   }
 
    private void sendFile(String infileName, String logfileName) {
        byte[] payload = new byte[MSS];
@@ -114,6 +145,15 @@ class Sender    {
            DatagramPacket sendPacket;
            int numBytesRead;
            while ((numBytesRead = fileInput.read(payload)) > 0)    {
+               // wait for fallsInWindow() to return true
+               synchronized (LOCK) {
+                   while (!fallsInWindow())    {
+                       try { LOCK.wait(); }
+                       catch (InterruptedException e) {
+                           break;
+                       }
+                   }
+               }
                header = getHeader();
                // copy header data into `sendData`
                for (int i=0; i<HEADERSIZE; i++)
@@ -124,6 +164,7 @@ class Sender    {
                // TODO set checksum header field
                sendPacket = new DatagramPacket(sendData, sendData.length, destIP, destPort);
                outSocket.send(sendPacket);
+               System.out.println("Sender sent " + Integer.toString(nextSeqNum));
                nextSeqNum++;
                payload = new byte[MSS];
                sendData = new byte[MSS + HEADERSIZE];

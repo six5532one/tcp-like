@@ -19,9 +19,9 @@ public class AckListener extends Thread {
                 sender.ackSocket.receive(receivePacket);
                 byte[] received = receivePacket.getData();
                 if (!BitWrangler.isCorrupted(received))  {
-                    // TODO extract ACK number
+                    // extract ACK number
                     int ackNum = BitWrangler.toInt(Arrays.copyOfRange(received, 8, 12));
-                    System.out.println(ackNum);
+                    System.out.println("Received ACK " + Integer.toString(ackNum));
                 }
             }
         }   catch (IOException io) {
