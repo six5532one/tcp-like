@@ -17,7 +17,7 @@ class Sender    {
     public static final int MSS = 576;
     public static final int HEADERSIZE = 20;
     private int nextSeqNum = 0;
-    private int numDupAcks = 0;
+    int numDupAcks = 0;
     private HashMap<Integer, Long> inTransitSendTimes;
     private HashMap<Integer, DatagramPacket> inTransitPackets;
     private long estimatedRTT = -1;
@@ -200,7 +200,8 @@ class Sender    {
            System.out.println("haven't retransmitted yet, is timer running?");
            System.out.println(timer.isRunning());
            System.out.println("just retransmited. starting new timer. is timer running?");
-           startTimer(timeout); 
+           startTimer(timeout);
+           numDupAcks = 0; 
            try  {
            Thread.sleep(1000);
            } catch (InterruptedException e) {
@@ -213,10 +214,38 @@ class Sender    {
        }
    }
 
+   private void send(DatagramPacket packet) {
+       if (!timer.isRunning())  {
+           System.out.println("supposedly timer not running");
+           System.out.println(timer.isRunning());
+           System.out.println("Sender about to send packet so starting timer");
+           retransmissionTimeoutInt = getTimeoutInt();
+           // start timer
+           startTimer(getTimeoutInt());
+           try  {
+               Thread.sleep(1000);
+           } catch(InterruptedException e) {
+                throw new RuntimeException(e);
+           }
+           System.out.println("timer should be running bc Sender started it for regular send");
+           System.out.println(timer.isRunning());
+           
+       }
+       try  {
+       outSocket.send(packet);
+       long sendTime = System.currentTimeMillis();
+       updateWindow(nextSeqNum, sendTime, packet);
+       System.out.println("Sender sent " + Integer.toString(nextSeqNum));
+       nextSeqNum++;
+       }    catch (IOException io) {
+           System.out.println("SenderThread: I/O error occurred while reading from file or writing to socket");
+           System.exit(0);
+       }
+   }
+
    private void sendFile(String infileName, String logfileName) {
        byte[] payload = new byte[MSS];
        byte[] header;
-       long sendTime;
        byte[] sendData = new byte[HEADERSIZE + MSS];
        try  {
            FileInputStream fileInput = new FileInputStream(new File(infileName));
@@ -241,6 +270,7 @@ class Sender    {
                    sendData[HEADERSIZE + i] = payload[i];
                // TODO set checksum header field
                sendPacket = new DatagramPacket(sendData, sendData.length, destIP, destPort);
+               /*
                if (!timer.isRunning())  {
                    System.out.println("supposedly timer not running");
                    System.out.println(timer.isRunning());
@@ -262,6 +292,8 @@ class Sender    {
                updateWindow(nextSeqNum, sendTime, sendPacket);
                System.out.println("Sender sent " + Integer.toString(nextSeqNum));
                nextSeqNum++;
+               */
+               send(sendPacket);
                payload = new byte[MSS];
                sendData = new byte[MSS + HEADERSIZE];
            }

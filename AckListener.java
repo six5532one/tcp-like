@@ -8,7 +8,6 @@ public class AckListener extends Thread {
 
     public AckListener(Sender s)    {
         sender = s;
-        numDupAcks = 0;
     }
 
     public void run()    {
@@ -39,11 +38,10 @@ public class AckListener extends Thread {
                     }   // ACKed one or more in-transit packets
                     // still waiting for ack for sendBase
                     else if (ackNum == sender.getSendBase())    {
-                        numDupAcks += 1;
+                        sender.numDupAcks++;
                         System.out.println("num dup ACKS: " + Integer.toString(numDupAcks));
-                        if (numDupAcks == 3)    {
+                        if (sender.numDupAcks == 3)    {
                             sender.retransmit(false);
-                            numDupAcks = 0;
                             //startTimer(getTimeoutInt(EstimatedRTT, DevRTT))
                         }
                     }
