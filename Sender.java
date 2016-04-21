@@ -32,6 +32,13 @@ class Sender    {
     Timer timer;
     Object LOCK;
 
+    synchronized void stopTimer()   {
+        timer.stopTimer();
+    }
+    synchronized void startTimer(long timeout)  {
+        timer = new Timer(this, timeout);
+        new Thread(timer).start();
+    }
     private long getTimeoutInt()    {
         if (estimatedRTT < 0 || devRTT < 0)
             return BOOTSTRAP_TIMEOUT;
@@ -44,6 +51,7 @@ class Sender    {
             estimatedRTT = sample;
         else
             estimatedRTT = (long)(0.875 * estimatedRTT) + (long)(0.125 * sample);
+        System.out.println("estimatedRTT: " + Long.toString(estimatedRTT));
     }
 
     private void updateDevRTT(long sample)  {
@@ -53,9 +61,17 @@ class Sender    {
             else
                 devRTT = (long)(0.75 * devRTT) + (long)(0.25 * Math.abs(estimatedRTT - sample));
         }
+        System.out.println("devRTT: " + Long.toString(devRTT));
+    }
+
+    void updateRTTMeasurements(long sample) {
+        // update Estimated RTT, DevRTT
+        updateEstimatedRTT(sample);
+        updateDevRTT(sample);
     }
 
     public Sender(String remoteIPStr, int remotePort, int ackPort, int windowSize) {
+        timer = new Timer(this, BOOTSTRAP_TIMEOUT);
         this.windowSize = windowSize;
         inTransitSendTimes = new HashMap<Integer, Long>();
         inTransitPackets = new HashMap<Integer, DatagramPacket>();
@@ -72,7 +88,6 @@ class Sender    {
         }
         destPort = remotePort;
         LOCK = new Object();
-        timer = new Timer(this, BOOTSTRAP_TIMEOUT);
         // Datagram socket for writing
         try {
             // bind to this port for testing on link simulator
@@ -132,13 +147,76 @@ class Sender    {
         }
    }
    
+   synchronized int getSendBase()    {
+       // return the sequence number of the oldest sent, unacknowledged packet
+       Integer oldest = nextSeqNum;
+       for (Integer sn: inTransitPackets.keySet())  {
+           if (sn < oldest)
+               oldest = sn;
+       }
+       return oldest.intValue();
+   }
+
+   synchronized void updateSendBase(int newSendBase, long receiveTime)  {
+       for (int sn = getSendBase(); sn < newSendBase; sn++)  {
+           Long sentTime = inTransitSendTimes.remove(sn);
+           inTransitPackets.remove(sn);
+           long RTTSample = receiveTime - sentTime;
+           updateRTTMeasurements(RTTSample);
+       }
+       retransmissionTimeoutInt = getTimeoutInt();
+       numDupAcks = 0;
+   }
+
    private boolean fallsInWindow()  {
-       return false;
+       return nextSeqNum < getSendBase() + windowSize;
+   }
+
+   synchronized void updateWindow(int justSentSeqNum, long sendTime, DatagramPacket justSentPacket)  {
+       inTransitSendTimes.put(justSentSeqNum, sendTime);
+       inTransitPackets.put(justSentSeqNum, justSentPacket);
+   }
+
+   synchronized void retransmit(boolean isTimeout)   {
+       System.out.println("retransmit " + Integer.toString(getSendBase()));
+       long timeout;
+       if (isTimeout)   {
+           retransmissionTimeoutInt *= 2;
+           timeout = retransmissionTimeoutInt;
+       }
+       else {
+           System.out.println("received 3 dup ACKS. is timer running atm?");
+           System.out.println(timer.isRunning());
+           System.out.println("fast retransit; stop timer. is timer running atm?");
+           stopTimer();
+           System.out.println(timer.isRunning());
+           timeout = getTimeoutInt();
+       }
+       DatagramPacket toRetransmit = inTransitPackets.get(getSendBase());
+       try  {
+           System.out.println("timeout for this retransmission: " + Long.toString(timeout));
+           outSocket.send(toRetransmit);
+           // start timer
+           System.out.println("haven't retransmitted yet, is timer running?");
+           System.out.println(timer.isRunning());
+           System.out.println("just retransmited. starting new timer. is timer running?");
+           startTimer(timeout); 
+           try  {
+           Thread.sleep(1000);
+           } catch (InterruptedException e) {
+               throw new RuntimeException(e);
+           }
+           System.out.println(timer.isRunning());
+       } catch (IOException io) {
+           System.out.println("SenderThread: I/O error occurred while writing to socket");
+           System.exit(0);
+       }
    }
 
    private void sendFile(String infileName, String logfileName) {
        byte[] payload = new byte[MSS];
        byte[] header;
+       long sendTime;
        byte[] sendData = new byte[HEADERSIZE + MSS];
        try  {
            FileInputStream fileInput = new FileInputStream(new File(infileName));
@@ -163,7 +241,25 @@ class Sender    {
                    sendData[HEADERSIZE + i] = payload[i];
                // TODO set checksum header field
                sendPacket = new DatagramPacket(sendData, sendData.length, destIP, destPort);
+               if (!timer.isRunning())  {
+                   System.out.println("supposedly timer not running");
+                   System.out.println(timer.isRunning());
+                   System.out.println("Sender about to send packet so starting timer");
+                   retransmissionTimeoutInt = getTimeoutInt();
+                   // start timer
+                   startTimer(getTimeoutInt());
+                   try  {
+                       Thread.sleep(1000);
+                   } catch(InterruptedException e) {
+                        throw new RuntimeException(e);
+                   }
+                   System.out.println("timer should be running bc Sender started it for regular send");
+                   System.out.println(timer.isRunning());
+                   
+               }
                outSocket.send(sendPacket);
+               sendTime = System.currentTimeMillis();
+               updateWindow(nextSeqNum, sendTime, sendPacket);
                System.out.println("Sender sent " + Integer.toString(nextSeqNum));
                nextSeqNum++;
                payload = new byte[MSS];

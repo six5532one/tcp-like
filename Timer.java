@@ -57,17 +57,21 @@ class Timer extends Thread {
     }
 
     public boolean isRunning()  {
-        System.out.println(elapsed);
+        //System.out.println(elapsed);
         //return (elapsed < duration) && (!stop); 
         return isRunning;
     }
 
     public void timeout()   {
+        /*
         isRunning = false;
-        //timerTest.inWindow = true;
+        timerTest.inWindow = true;
         synchronized (ttr.LOCK)   {
             ttr.LOCK.notifyAll();
         }
+        */
+        stopTimer();
         System.err.println ("Network timeout");
+        sender.retransmit(true);
     }
 }
