@@ -18,6 +18,7 @@ class Sender    {
     public static final int HEADERSIZE = 20;
     private int nextSeqNum = 0;
     int numDupAcks = 0;
+    int lastAckReceived = -1;
     private HashMap<Integer, Long> inTransitSendTimes;
     private HashMap<Integer, DatagramPacket> inTransitPackets;
     private long estimatedRTT = -1;
@@ -166,9 +167,16 @@ class Sender    {
        }
        retransmissionTimeoutInt = getTimeoutInt();
        numDupAcks = 0;
+       // restart timer if any packets in transit
+       if (inTransitPackets.size() > 0)
+           startTimer(getTimeoutInt());
    }
 
    private boolean fallsInWindow()  {
+       System.out.println("falls in window?");
+       System.out.println("nextSeqNum: " + Integer.toString(nextSeqNum));
+       System.out.println("getSendBase(): " + Integer.toString(nextSeqNum));
+       System.out.println("getSendBase() + windowSize: " + Integer.toString(getSendBase() + windowSize));
        return nextSeqNum < getSendBase() + windowSize;
    }
 
@@ -192,18 +200,19 @@ class Sender    {
            System.out.println(timer.isRunning());
            timeout = getTimeoutInt();
        }
-       DatagramPacket toRetransmit = inTransitPackets.get(getSendBase());
+       int seqNumToResend = getSendBase();
+       DatagramPacket toRetransmit = inTransitPackets.get(seqNumToResend);
        try  {
            System.out.println("timeout for this retransmission: " + Long.toString(timeout));
            outSocket.send(toRetransmit);
-           // start timer
-           System.out.println("haven't retransmitted yet, is timer running?");
-           System.out.println(timer.isRunning());
-           System.out.println("just retransmited. starting new timer. is timer running?");
+           long sendTime = System.currentTimeMillis();
+           if (timer.isRunning())
+               stopTimer();
            startTimer(timeout);
+           inTransitSendTimes.put(seqNumToResend, sendTime);
            numDupAcks = 0; 
            try  {
-           Thread.sleep(1000);
+           Thread.sleep((long)0.5 * timeout);
            } catch (InterruptedException e) {
                throw new RuntimeException(e);
            }
@@ -214,7 +223,7 @@ class Sender    {
        }
    }
 
-   private void send(DatagramPacket packet) {
+   private synchronized void send(DatagramPacket packet) {
        if (!timer.isRunning())  {
            System.out.println("supposedly timer not running");
            System.out.println(timer.isRunning());
@@ -223,7 +232,7 @@ class Sender    {
            // start timer
            startTimer(getTimeoutInt());
            try  {
-               Thread.sleep(1000);
+               Thread.sleep((long)0.5 * getTimeoutInt());
            } catch(InterruptedException e) {
                 throw new RuntimeException(e);
            }
@@ -232,11 +241,11 @@ class Sender    {
            
        }
        try  {
-       outSocket.send(packet);
-       long sendTime = System.currentTimeMillis();
-       updateWindow(nextSeqNum, sendTime, packet);
-       System.out.println("Sender sent " + Integer.toString(nextSeqNum));
-       nextSeqNum++;
+           outSocket.send(packet);
+           long sendTime = System.currentTimeMillis();
+           updateWindow(nextSeqNum, sendTime, packet);
+           System.out.println("Sender sent " + Integer.toString(nextSeqNum));
+           nextSeqNum++;
        }    catch (IOException io) {
            System.out.println("SenderThread: I/O error occurred while reading from file or writing to socket");
            System.exit(0);
@@ -296,6 +305,17 @@ class Sender    {
                send(sendPacket);
                payload = new byte[MSS];
                sendData = new byte[MSS + HEADERSIZE];
+           }
+           // wait for ACK of last used sequence number
+           synchronized (LOCK) {
+               while (lastAckReceived < nextSeqNum)    {
+                   System.out.println("lastAckReceived: "+Integer.toString(lastAckReceived));
+                   System.out.println("nextSeqNum: "+Integer.toString(nextSeqNum));
+                   try { LOCK.wait(); }
+                   catch (InterruptedException e) {
+                       break;
+                   }
+               }
            }
            // send FIN request
            header = getHeader();

@@ -4,7 +4,6 @@ import java.net.DatagramPacket;
 
 public class AckListener extends Thread {
     private Sender sender;
-    int numDupAcks;
 
     public AckListener(Sender s)    {
         sender = s;
@@ -24,6 +23,7 @@ public class AckListener extends Thread {
                     // extract ACK number
                     int ackNum = BitWrangler.toInt(Arrays.copyOfRange(received, 8, 12));
                     System.out.println("Received ACK " + Integer.toString(ackNum));
+                    sender.lastAckReceived = ackNum;
                     if (ackNum > sender.getSendBase())  {
                         // stop current timer
                         sender.stopTimer();
@@ -31,19 +31,19 @@ public class AckListener extends Thread {
                         System.out.println(sender.timer.isRunning());
                         receiveTime = System.currentTimeMillis();
                         // set sendBase to y
-                        sender.updateSendBase(ackNum, receiveTime);
-                        synchronized (sender.LOCK)   {
-                            sender.LOCK.notifyAll();
-                        }
+                        sender.updateSendBase(ackNum, receiveTime); 
                     }   // ACKed one or more in-transit packets
                     // still waiting for ack for sendBase
                     else if (ackNum == sender.getSendBase())    {
                         sender.numDupAcks++;
-                        System.out.println("num dup ACKS: " + Integer.toString(numDupAcks));
+                        System.out.println("num dup ACKS: " + sender.numDupAcks);
                         if (sender.numDupAcks == 3)    {
                             sender.retransmit(false);
                             //startTimer(getTimeoutInt(EstimatedRTT, DevRTT))
                         }
+                    }
+                    synchronized (sender.LOCK)   {
+                        sender.LOCK.notifyAll();
                     }
                 }
             }
