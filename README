@@ -13,18 +13,19 @@ and the Receiver has IP address 128.59.15.68 and is listening on port 7000:
 $ ssh ec2805@128.59.15.62
 $ ./newudpl -i128.59.15.70/5555 -o128.59.15.68:7000 -v -L60
 
-// Sender
-$ ssh ec2805@128.59.15.70
-$ make clean
-$ make
-$ java Sender infile 128.59.15.62 41192 6000 sendLog
-
 // Receiver
 $ ssh ec2805@128.59.15.68
 $ make clean
 $ make
 $ java Receiver outfile 7000 128.59.15.70 6000 receiveLog
 $ cat outfile
+
+// Sender
+$ ssh ec2805@128.59.15.70
+$ make clean
+$ make
+$ java Sender infile 128.59.15.62 41192 6000 sendLog
+
 
 Features
 ========
