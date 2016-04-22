@@ -7,6 +7,8 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -35,6 +37,7 @@ class Sender    {
     Timer timer;
     Object LOCK;
     ArrayList<Thread> threads;
+    private OutputStream outstream;
 
     synchronized void stopTimer()   {
         timer.stopTimer();
@@ -76,7 +79,7 @@ class Sender    {
         updateDevRTT(sample);
     }
 
-    public Sender(String remoteIPStr, int remotePort, int ackPort, int windowSize) {
+    public Sender(String remoteIPStr, int remotePort, int ackPort, int windowSize, String logfileName) {
         threads = new ArrayList<Thread>();
         numSegmentsSent = 0;
         numSegmentsRetransmitted = 0;
@@ -98,6 +101,16 @@ class Sender    {
         }
         destPort = remotePort;
         LOCK = new Object();
+        if (logfileName.equals("stdout"))
+            outstream = System.out;
+        else    {
+            try {
+                File logFile = new File(logfileName);
+                outstream = new FileOutputStream(logFile);
+            } catch (FileNotFoundException e)   {
+                System.err.println("logfile not found");
+            }
+        }
         // Datagram socket for writing
         try {
             // bind to this port for testing on link simulator
@@ -156,7 +169,7 @@ class Sender    {
             int ackPort = Integer.parseInt(args[3]);
             String logfileName = args[4];
             int windowSize = Integer.parseInt(args[5]);
-            Sender tcplikeSender = new Sender(remoteIPStr, remotePort, ackPort, windowSize);
+            Sender tcplikeSender = new Sender(remoteIPStr, remotePort, ackPort, windowSize, logfileName);
             boolean succeeded = tcplikeSender.sendFile(infileName, logfileName);
             String result;
             if (succeeded)
@@ -218,6 +231,7 @@ class Sender    {
        DatagramPacket toRetransmit = inTransitPackets.get(seqNumToResend);
        try  {
            outSocket.send(toRetransmit);
+           Logger.log(sourcePort, destPort, seqNumToResend, 0, false, false, outstream);
            numSegmentsRetransmitted++;
            numSegmentsSent++;
            numBytesSent += toRetransmit.getLength();
@@ -244,7 +258,7 @@ class Sender    {
        try  {
            outSocket.send(packet);
            long sendTime = System.currentTimeMillis();
-           updateWindow(nextSeqNum, sendTime, packet);
+           updateWindow(nextSeqNum, sendTime, packet); 
            nextSeqNum++;
            numSegmentsSent++;
            numBytesSent += packet.getLength();
@@ -287,6 +301,7 @@ class Sender    {
                    sendData[HEADERSIZE + i] = payload[i];
                // TODO set checksum header field
                sendPacket = new DatagramPacket(sendData, sendData.length, destIP, destPort); 
+               Logger.log(sourcePort, destPort, nextSeqNum, 0, false, false, outstream);
                send(sendPacket);
                payload = new byte[MSS];
                sendData = new byte[MSS + HEADERSIZE];
@@ -307,7 +322,8 @@ class Sender    {
            bits.set(0);
            header[13] = BitWrangler.toByteArray(bits)[0];
            sendPacket = new DatagramPacket(header, header.length, destIP, destPort);
-           send(sendPacket);
+           Logger.log(sourcePort, destPort, nextSeqNum, 0, true, false, outstream);
+           send(sendPacket); 
            // wait for receiver's shutdown segment
            DatagramPacket finACK = new DatagramPacket(header, header.length);
            outSocket.receive(finACK);   
