@@ -14,6 +14,13 @@ import java.io.File;
 class Receiver  {
     public static final int MSS = 576;
     public static final int HEADERSIZE = 20;
+    private static final int ACK_TO_LOG = 0;
+    private static final int URG = 0;
+    private static final int ACK_IN_RECEIVED = 0;
+    private static final int ACK_IN_SENT = 1;
+    private static final int PSH = 0;
+    private static final int RST = 0;
+    private static final int SYN = 0;
     private int nextExpected = 0;
     private HashMap<Integer, byte[]> buffer;
     private DatagramSocket socket;
@@ -73,7 +80,7 @@ class Receiver  {
         return header;
     }
 
-    private void writeFile(String outfileName, String logfileName)  {
+    private boolean writeFile(String outfileName, String logfileName)  {
         try {
             FileOutputStream fout = new FileOutputStream(new File(outfileName));
             DatagramPacket receivePacket;
@@ -85,8 +92,12 @@ class Receiver  {
                 socket.receive(receivePacket);
                 byte[] received = receivePacket.getData();
                 if (!BitWrangler.isCorrupted(received)) {
+                    int sourcePort = BitWrangler.toInt(Arrays.copyOfRange(received, 0, 2));
+                    int destPort = BitWrangler.toInt(Arrays.copyOfRange(received, 2, 4));
+                    int seqNum = BitWrangler.toInt(Arrays.copyOfRange(received, 4, 8));
+
                     if (isFinSegment(Arrays.copyOfRange(received, 0, HEADERSIZE))) {
-                        System.out.println("Received fin segment");
+                        log(sourcePort, destPort, seqNum, 0, true, false);
                         // find out which port the FIN segment came from
                         byte[] FINSourceBytes = Arrays.copyOfRange(received, 0, 2);
                         int FINSourcePort = BitWrangler.toInt(FINSourceBytes);
@@ -96,9 +107,6 @@ class Receiver  {
                         socket.send(finACK);
                         break;
                     }
-                    int sourcePort = BitWrangler.toInt(Arrays.copyOfRange(received, 0, 2));
-                    int destPort = BitWrangler.toInt(Arrays.copyOfRange(received, 2, 4));
-                    int seqNum = BitWrangler.toInt(Arrays.copyOfRange(received, 4, 8));
                     byte[] payload = Arrays.copyOfRange(received, HEADERSIZE, received.length);
                     if (seqNum > nextExpected)  {
                         //buffer out-of-order packet
@@ -119,16 +127,37 @@ class Receiver  {
                             receivedSeqNum++;
                         }   //done writing buffered data and updating buffer
                     }
+                   log(sourcePort, destPort, seqNum, 0, false, false); 
                 }   // not corrupted
                 sendACK(socket);
             }
+            return true;
         } catch (FileNotFoundException e)   {
             System.out.println("specified output file exists but is a directory rather than a regular file, does not exist but cannot be created, or cannot be opened for any other reason");
-            System.exit(0);
+            return false;
         } catch (IOException e) {
             System.out.println("I/O error occurred while reading from socket or writing to file");
-            System.exit(0);
+            return false;
         }
+    }
+
+    private void log(int sourcePort, int destPort, int seqNum, int ackNum, boolean isFIN, boolean isACK) {
+        int ACK, FIN;
+        if (isACK)
+            ACK = ACK_IN_SENT;
+        else
+            ACK = ACK_IN_RECEIVED;
+        if (isFIN)
+            FIN = 1;
+        else
+            FIN = 0;
+        StringBuilder sb = new StringBuilder();
+        sb.append(System.currentTimeMillis()).append("\t").append(sourcePort)
+          .append("\t").append(destPort).append("\t").append(seqNum).append("\t")
+          .append(ackNum).append("\t").append(URG).append("\t").append(ACK)
+          .append("\t").append(PSH).append("\t").append(RST).append("\t")
+          .append(SYN).append("\t").append(FIN);
+        System.out.println(sb.toString());
     }
 
     private void sendACK(DatagramSocket socket)    {
@@ -151,7 +180,11 @@ class Receiver  {
             int senderPort = Integer.parseInt(args[3]);
             String logfileName = args[4];
             Receiver tcplikeReceiver = new Receiver(listeningPort, senderIPStr, senderPort);
-            tcplikeReceiver.writeFile(outfileName, logfileName);
+            boolean succeeded = tcplikeReceiver.writeFile(outfileName, logfileName);
+            if (succeeded)
+                System.out.println("Delivery completed successfully");
+            else
+                System.out.println("Delivery failed");
         } catch (ArrayIndexOutOfBoundsException e)  {
             System.out.println("Usage: java Receiver <filename> <listening_port> <sender_IP> <sender_port> <log_filename>");
         } 
