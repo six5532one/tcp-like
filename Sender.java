@@ -168,7 +168,11 @@ class Sender    {
             int remotePort = Integer.parseInt(args[2]);
             int ackPort = Integer.parseInt(args[3]);
             String logfileName = args[4];
-            int windowSize = Integer.parseInt(args[5]);
+            int windowSize;
+            if (args.length == 5)
+                windowSize = 1;
+            else
+                windowSize = Integer.parseInt(args[5]);
             Sender tcplikeSender = new Sender(remoteIPStr, remotePort, ackPort, windowSize, logfileName);
             boolean succeeded = tcplikeSender.sendFile(infileName, logfileName);
             String result;
