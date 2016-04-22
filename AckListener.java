@@ -22,7 +22,6 @@ public class AckListener extends Thread {
                 if (!BitWrangler.isCorrupted(received))  {
                     // extract ACK number
                     int ackNum = BitWrangler.toInt(Arrays.copyOfRange(received, 8, 12));
-                    System.out.println("Received ACK " + Integer.toString(ackNum));
                     sender.lastAckReceived = ackNum; 
                     if (ackNum > sender.getSendBase())  {
                         // stop current timer
@@ -34,19 +33,18 @@ public class AckListener extends Thread {
                     // still waiting for ack for sendBase
                     else if (ackNum == sender.getSendBase())    {
                         sender.numDupAcks++;
-                        System.out.println("num dup ACKS: " + sender.numDupAcks);
                         if (sender.numDupAcks == 3)    {
                             sender.retransmit(false);
                         }
                     }
                     synchronized (sender.LOCK)   {
                         sender.LOCK.notifyAll();
-                    }
-                }
-            }
+                    }   // released lock
+                }   // handler for non-corrupt segments
+            }   // done listening for ACKS
         }   catch (IOException io) {
-            System.out.println("ack listener: I/O error occurred while reading from file or writing to socket");
-            System.exit(0);
+                if (!sender.ackSocket.isClosed())
+                    System.out.println("ack listener: I/O error occurred while reading from file or writing to socket");
         }
     }
 }

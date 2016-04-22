@@ -1,3 +1,4 @@
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
 import java.net.DatagramPacket;
@@ -16,6 +17,7 @@ class Sender    {
     // maximum segment size is 576 bytes
     public static final int MSS = 576;
     public static final int HEADERSIZE = 20;
+    private int numSegmentsSent, numSegmentsRetransmitted, numBytesSent;
     int nextSeqNum = 0;
     int numDupAcks = 0;
     int lastAckReceived = -1;
@@ -32,13 +34,16 @@ class Sender    {
     DatagramSocket ackSocket;
     Timer timer;
     Object LOCK;
+    ArrayList<Thread> threads;
 
     synchronized void stopTimer()   {
         timer.stopTimer();
     }
     synchronized void startTimer(long timeout)  {
         timer = new Timer(this, timeout);
-        new Thread(timer).start();
+        Thread t = new Thread(timer);
+        threads.add(t);
+        t.start();
     }
     private long getTimeoutInt()    {
         long result;
@@ -46,7 +51,6 @@ class Sender    {
             result = BOOTSTRAP_TIMEOUT;
         else
             result = estimatedRTT + 4 * devRTT;
-        System.out.println("getTimeoutInt(): "+Long.toString(result));
         return result;
     }
 
@@ -55,7 +59,6 @@ class Sender    {
             estimatedRTT = sample;
         else
             estimatedRTT = (long)(0.875 * estimatedRTT) + (long)(0.125 * sample);
-        System.out.println("estimatedRTT: " + Long.toString(estimatedRTT));
     }
 
     private void updateDevRTT(long sample)  {
@@ -65,7 +68,6 @@ class Sender    {
             else
                 devRTT = (long)(0.75 * devRTT) + (long)(0.25 * Math.abs(estimatedRTT - sample));
         }
-        System.out.println("devRTT: " + Long.toString(devRTT));
     }
 
     void updateRTTMeasurements(long sample) {
@@ -75,6 +77,10 @@ class Sender    {
     }
 
     public Sender(String remoteIPStr, int remotePort, int ackPort, int windowSize) {
+        threads = new ArrayList<Thread>();
+        numSegmentsSent = 0;
+        numSegmentsRetransmitted = 0;
+        numBytesSent = 0;
         timer = new Timer(this, BOOTSTRAP_TIMEOUT);
         this.windowSize = windowSize;
         inTransitSendTimes = new HashMap<Integer, Long>();
@@ -99,7 +105,9 @@ class Sender    {
             sourcePort = outSocket.getLocalPort();
             ackSocket = new DatagramSocket(ackPort);
             AckListener ackListener = new AckListener(this);
-            new Thread(ackListener).start();
+            Thread t = new Thread(ackListener);
+            threads.add(t);
+            t.start();
         } catch (SocketException e) {
             System.out.println("socket could not be opened");
             System.exit(0);
@@ -131,8 +139,13 @@ class Sender    {
         return header;
     }
     
-    private void displayStats() {
-        System.out.println("TODO print stats at end");
+    private String getStatString() {
+        StringBuilder sb = new StringBuilder("Total bytes sent = ");
+        sb.append(numBytesSent).append("\nSegments sent = ")
+        .append(numSegmentsSent).append("\nSegments retransmitted = ")
+        .append((double)numSegmentsRetransmitted/numSegmentsSent)
+        .append("%");
+        return sb.toString();
     }
 
     public static void main(String[] args)  {
@@ -144,8 +157,13 @@ class Sender    {
             String logfileName = args[4];
             int windowSize = Integer.parseInt(args[5]);
             Sender tcplikeSender = new Sender(remoteIPStr, remotePort, ackPort, windowSize);
-            tcplikeSender.sendFile(infileName, logfileName);
-            tcplikeSender.displayStats();
+            boolean succeeded = tcplikeSender.sendFile(infileName, logfileName);
+            String result;
+            if (succeeded)
+                result = "Delivery completed successfully\n";
+            else
+                result = "Delivery failed\n";
+            System.out.println(result + tcplikeSender.getStatString());
         } catch (ArrayIndexOutOfBoundsException e)  {
             System.out.println("Usage: java Sender <filename> <remote_IP> <remote_port> <ack_port_num> <log_filename> <window_size>");
         }
@@ -187,10 +205,9 @@ class Sender    {
    }
 
    synchronized void retransmit(boolean isTimeout)   {
-       System.out.println("retransmit " + Integer.toString(getSendBase()));
        long timeout;
        if (isTimeout)   {
-           retransmissionTimeoutInt *= 2;
+           retransmissionTimeoutInt *= (long)1.5;
            timeout = retransmissionTimeoutInt;
        }
        else {
@@ -200,8 +217,10 @@ class Sender    {
        int seqNumToResend = getSendBase();
        DatagramPacket toRetransmit = inTransitPackets.get(seqNumToResend);
        try  {
-           System.out.println("timeout for this retransmission: " + Long.toString(timeout));
            outSocket.send(toRetransmit);
+           numSegmentsRetransmitted++;
+           numSegmentsSent++;
+           numBytesSent += toRetransmit.getLength();
            long sendTime = System.currentTimeMillis();
            if (timer.isRunning())
                stopTimer();
@@ -209,8 +228,10 @@ class Sender    {
            inTransitSendTimes.put(seqNumToResend, sendTime);
            numDupAcks = 0;
        } catch (IOException io) {
-           System.out.println("SenderThread: I/O error occurred while writing to socket");
-           System.exit(0);
+           if (!outSocket.isClosed())   {
+               System.out.println("SenderThread: I/O error occurred while writing to socket");
+               System.exit(0);
+           }
        }
    }
 
@@ -224,11 +245,14 @@ class Sender    {
            outSocket.send(packet);
            long sendTime = System.currentTimeMillis();
            updateWindow(nextSeqNum, sendTime, packet);
-           System.out.println("Sender sent " + Integer.toString(nextSeqNum));
            nextSeqNum++;
+           numSegmentsSent++;
+           numBytesSent += packet.getLength();
        }    catch (IOException io) {
-           System.out.println("SenderThread: I/O error occurred while reading from file or writing to socket");
-           System.exit(0);
+           if (!outSocket.isClosed())   {
+               System.out.println("SenderThread: I/O error occurred while reading from file or writing to socket");
+               System.exit(0);
+           }
        }
    }
 
@@ -236,7 +260,7 @@ class Sender    {
        return lastAckReceived >= nextSeqNum;
    }
 
-   private void sendFile(String infileName, String logfileName) {
+   private boolean sendFile(String infileName, String logfileName) {
        byte[] payload = new byte[MSS];
        byte[] header;
        byte[] sendData = new byte[HEADERSIZE + MSS];
@@ -276,7 +300,6 @@ class Sender    {
                    }
                }
            }
-           System.out.println("done sending all!");
            // send FIN request
            header = getHeader();
            // set FIN header field to 1
@@ -288,15 +311,22 @@ class Sender    {
            // wait for receiver's shutdown segment
            DatagramPacket finACK = new DatagramPacket(header, header.length);
            outSocket.receive(finACK);   
-           System.out.println("received finACK. closing socket...");
+           //stopTimer();
+           for (Thread t: threads)
+               t.interrupt();
            outSocket.close();
            ackSocket.close();
+           return true;
        } catch (FileNotFoundException e) {
            System.out.println("file does not exist, is a directory rather than a regular file, or for some other reason cannot be opened for reading");
-           System.exit(0);
+           return false;
        } catch (IOException io) {
-           System.out.println("SenderThread: I/O error occurred while reading from file or writing to socket");
-           System.exit(0);
+           if (!outSocket.isClosed())   {
+               System.out.println("SenderThreadBottom: I/O error occurred while reading from file or writing to socket");
+               return false;
+           }
+           else
+               return true;
        }
    }
 }
