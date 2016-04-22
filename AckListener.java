@@ -23,12 +23,10 @@ public class AckListener extends Thread {
                     // extract ACK number
                     int ackNum = BitWrangler.toInt(Arrays.copyOfRange(received, 8, 12));
                     System.out.println("Received ACK " + Integer.toString(ackNum));
-                    sender.lastAckReceived = ackNum;
+                    sender.lastAckReceived = ackNum; 
                     if (ackNum > sender.getSendBase())  {
                         // stop current timer
                         sender.stopTimer();
-                        System.out.println("AckListener stopped timer");
-                        System.out.println(sender.timer.isRunning());
                         receiveTime = System.currentTimeMillis();
                         // set sendBase to y
                         sender.updateSendBase(ackNum, receiveTime); 
@@ -39,7 +37,6 @@ public class AckListener extends Thread {
                         System.out.println("num dup ACKS: " + sender.numDupAcks);
                         if (sender.numDupAcks == 3)    {
                             sender.retransmit(false);
-                            //startTimer(getTimeoutInt(EstimatedRTT, DevRTT))
                         }
                     }
                     synchronized (sender.LOCK)   {
@@ -53,4 +50,3 @@ public class AckListener extends Thread {
         }
     }
 }
-

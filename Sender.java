@@ -12,11 +12,11 @@ import java.io.IOException;
 
 class Sender    {
     // before computing timeout interval dynamically, initialize to 5s
-    public static final long BOOTSTRAP_TIMEOUT = 5000;
+    public static final long BOOTSTRAP_TIMEOUT = 1000;
     // maximum segment size is 576 bytes
     public static final int MSS = 576;
     public static final int HEADERSIZE = 20;
-    private int nextSeqNum = 0;
+    int nextSeqNum = 0;
     int numDupAcks = 0;
     int lastAckReceived = -1;
     private HashMap<Integer, Long> inTransitSendTimes;
@@ -41,10 +41,13 @@ class Sender    {
         new Thread(timer).start();
     }
     private long getTimeoutInt()    {
+        long result;
         if (estimatedRTT < 0 || devRTT < 0)
-            return BOOTSTRAP_TIMEOUT;
+            result = BOOTSTRAP_TIMEOUT;
         else
-            return estimatedRTT + 4 * devRTT;
+            result = estimatedRTT + 4 * devRTT;
+        System.out.println("getTimeoutInt(): "+Long.toString(result));
+        return result;
     }
 
     private void updateEstimatedRTT(long sample)    {
@@ -159,11 +162,13 @@ class Sender    {
    }
 
    synchronized void updateSendBase(int newSendBase, long receiveTime)  {
-       for (int sn = getSendBase(); sn < newSendBase; sn++)  {
-           Long sentTime = inTransitSendTimes.remove(sn);
+       int oldSendBase = getSendBase();
+       Long sentTime = inTransitSendTimes.get(oldSendBase);
+       long RTTSample = receiveTime - sentTime;
+       updateRTTMeasurements(RTTSample);
+       for (int sn = oldSendBase; sn < newSendBase; sn++)  {
+           inTransitSendTimes.remove(sn);
            inTransitPackets.remove(sn);
-           long RTTSample = receiveTime - sentTime;
-           updateRTTMeasurements(RTTSample);
        }
        retransmissionTimeoutInt = getTimeoutInt();
        numDupAcks = 0;
@@ -173,10 +178,6 @@ class Sender    {
    }
 
    private boolean fallsInWindow()  {
-       System.out.println("falls in window?");
-       System.out.println("nextSeqNum: " + Integer.toString(nextSeqNum));
-       System.out.println("getSendBase(): " + Integer.toString(nextSeqNum));
-       System.out.println("getSendBase() + windowSize: " + Integer.toString(getSendBase() + windowSize));
        return nextSeqNum < getSendBase() + windowSize;
    }
 
@@ -193,11 +194,7 @@ class Sender    {
            timeout = retransmissionTimeoutInt;
        }
        else {
-           System.out.println("received 3 dup ACKS. is timer running atm?");
-           System.out.println(timer.isRunning());
-           System.out.println("fast retransit; stop timer. is timer running atm?");
            stopTimer();
-           System.out.println(timer.isRunning());
            timeout = getTimeoutInt();
        }
        int seqNumToResend = getSendBase();
@@ -210,13 +207,7 @@ class Sender    {
                stopTimer();
            startTimer(timeout);
            inTransitSendTimes.put(seqNumToResend, sendTime);
-           numDupAcks = 0; 
-           try  {
-           Thread.sleep((long)0.5 * timeout);
-           } catch (InterruptedException e) {
-               throw new RuntimeException(e);
-           }
-           System.out.println(timer.isRunning());
+           numDupAcks = 0;
        } catch (IOException io) {
            System.out.println("SenderThread: I/O error occurred while writing to socket");
            System.exit(0);
@@ -224,21 +215,10 @@ class Sender    {
    }
 
    private synchronized void send(DatagramPacket packet) {
-       if (!timer.isRunning())  {
-           System.out.println("supposedly timer not running");
-           System.out.println(timer.isRunning());
-           System.out.println("Sender about to send packet so starting timer");
-           retransmissionTimeoutInt = getTimeoutInt();
+       retransmissionTimeoutInt = getTimeoutInt();
+       if (!timer.isRunning())  {    
            // start timer
            startTimer(getTimeoutInt());
-           try  {
-               Thread.sleep((long)0.5 * getTimeoutInt());
-           } catch(InterruptedException e) {
-                throw new RuntimeException(e);
-           }
-           System.out.println("timer should be running bc Sender started it for regular send");
-           System.out.println(timer.isRunning());
-           
        }
        try  {
            outSocket.send(packet);
@@ -250,6 +230,10 @@ class Sender    {
            System.out.println("SenderThread: I/O error occurred while reading from file or writing to socket");
            System.exit(0);
        }
+   }
+
+   boolean doneSending()    {
+       return lastAckReceived >= nextSeqNum;
    }
 
    private void sendFile(String infileName, String logfileName) {
@@ -278,45 +262,21 @@ class Sender    {
                for (int i=0; i<MSS; i++)
                    sendData[HEADERSIZE + i] = payload[i];
                // TODO set checksum header field
-               sendPacket = new DatagramPacket(sendData, sendData.length, destIP, destPort);
-               /*
-               if (!timer.isRunning())  {
-                   System.out.println("supposedly timer not running");
-                   System.out.println(timer.isRunning());
-                   System.out.println("Sender about to send packet so starting timer");
-                   retransmissionTimeoutInt = getTimeoutInt();
-                   // start timer
-                   startTimer(getTimeoutInt());
-                   try  {
-                       Thread.sleep(1000);
-                   } catch(InterruptedException e) {
-                        throw new RuntimeException(e);
-                   }
-                   System.out.println("timer should be running bc Sender started it for regular send");
-                   System.out.println(timer.isRunning());
-                   
-               }
-               outSocket.send(sendPacket);
-               sendTime = System.currentTimeMillis();
-               updateWindow(nextSeqNum, sendTime, sendPacket);
-               System.out.println("Sender sent " + Integer.toString(nextSeqNum));
-               nextSeqNum++;
-               */
+               sendPacket = new DatagramPacket(sendData, sendData.length, destIP, destPort); 
                send(sendPacket);
                payload = new byte[MSS];
                sendData = new byte[MSS + HEADERSIZE];
            }
            // wait for ACK of last used sequence number
            synchronized (LOCK) {
-               while (lastAckReceived < nextSeqNum)    {
-                   System.out.println("lastAckReceived: "+Integer.toString(lastAckReceived));
-                   System.out.println("nextSeqNum: "+Integer.toString(nextSeqNum));
+               while (!(doneSending()))    {
                    try { LOCK.wait(); }
                    catch (InterruptedException e) {
                        break;
                    }
                }
            }
+           System.out.println("done sending all!");
            // send FIN request
            header = getHeader();
            // set FIN header field to 1
@@ -324,7 +284,7 @@ class Sender    {
            bits.set(0);
            header[13] = BitWrangler.toByteArray(bits)[0];
            sendPacket = new DatagramPacket(header, header.length, destIP, destPort);
-           outSocket.send(sendPacket);
+           send(sendPacket);
            // wait for receiver's shutdown segment
            DatagramPacket finACK = new DatagramPacket(header, header.length);
            outSocket.receive(finACK);   
