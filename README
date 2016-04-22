@@ -24,7 +24,7 @@ $ cat outfile
 $ ssh ec2805@128.59.15.70
 $ make clean
 $ make
-$ java Sender infile 128.59.15.62 41192 6000 sendLog
+$ java Sender infile 128.59.15.62 41192 6000 sendLog 8
 
 
 Features
