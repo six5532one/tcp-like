@@ -110,6 +110,7 @@ class Receiver  {
                         header = getHeader();
                         DatagramPacket finACK = new DatagramPacket(header, header.length, destIP, FINSourcePort);
                         socket.send(finACK);
+                        Logger.log(this.sourcePort, this.destPort, 0, seqNum, true, true, outstream);
                         break;
                     }
                     byte[] payload = Arrays.copyOfRange(received, HEADERSIZE, received.length);
@@ -134,7 +135,7 @@ class Receiver  {
                     }
                    Logger.log(sourcePort, destPort, seqNum, 0, false, false, outstream); 
                 }   // not corrupted
-                sendACK(socket);
+                sendACK(socket); 
             }
             return true;
         } catch (FileNotFoundException e)   {
@@ -149,7 +150,8 @@ class Receiver  {
     private void sendACK(DatagramSocket socket)    {
         byte[] header = getHeader();
         DatagramPacket ack = new DatagramPacket(header, header.length, destIP, destPort);
-        System.out.println("sending ack " + Integer.toString(nextExpected));
+        Logger.log(this.sourcePort, this.destPort, 0, nextExpected, false, true, outstream);
+        //System.out.println("sending ack " + Integer.toString(nextExpected));
         try {
             socket.send(ack);
         } catch (IOException e) {
