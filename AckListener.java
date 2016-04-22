@@ -23,6 +23,11 @@ public class AckListener extends Thread {
                     // extract ACK number
                     int ackNum = BitWrangler.toInt(Arrays.copyOfRange(received, 8, 12));
                     sender.lastAckReceived = ackNum; 
+                    // extract source
+                    int sourcePort = BitWrangler.toInt(Arrays.copyOfRange(received, 0, 2));
+                    // extract dest
+                    int destPort = BitWrangler.toInt(Arrays.copyOfRange(received, 2, 4));
+                    Logger.log(sourcePort, destPort, 0, ackNum, false, true, sender.outstream);
                     if (ackNum > sender.getSendBase())  {
                         // stop current timer
                         sender.stopTimer();

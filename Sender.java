@@ -37,7 +37,7 @@ class Sender    {
     Timer timer;
     Object LOCK;
     ArrayList<Thread> threads;
-    private OutputStream outstream;
+    OutputStream outstream;
 
     synchronized void stopTimer()   {
         timer.stopTimer();
