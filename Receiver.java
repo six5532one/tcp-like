@@ -7,6 +7,7 @@ import java.net.SocketException;
 import java.net.DatagramSocket;
 import java.net.UnknownHostException;
 import java.net.InetAddress;
+import java.io.OutputStream;
 import java.io.FileOutputStream;
 import java.io.FileNotFoundException;
 import java.io.File;
@@ -14,20 +15,14 @@ import java.io.File;
 class Receiver  {
     public static final int MSS = 576;
     public static final int HEADERSIZE = 20;
-    private static final int ACK_TO_LOG = 0;
-    private static final int URG = 0;
-    private static final int ACK_IN_RECEIVED = 0;
-    private static final int ACK_IN_SENT = 1;
-    private static final int PSH = 0;
-    private static final int RST = 0;
-    private static final int SYN = 0;
     private int nextExpected = 0;
     private HashMap<Integer, byte[]> buffer;
     private DatagramSocket socket;
     private InetAddress destIP;
-    private int destPort, sourcePort; 
+    private int destPort, sourcePort;
+    private OutputStream outstream; 
 
-    public Receiver(int listeningPort, String senderIPStr, int senderPort)   { 
+    public Receiver(int listeningPort, String senderIPStr, int senderPort, String logfileName)   { 
         try {
             this.destIP = InetAddress.getByName(senderIPStr);
         } catch (UnknownHostException e)    {
@@ -43,6 +38,16 @@ class Receiver  {
         this.destPort = senderPort;
         this.sourcePort = listeningPort;
         buffer = new HashMap<Integer, byte[]>();
+        if (logfileName.equals("stdout"))
+            outstream = System.out;
+        else    {
+            try {
+                File logFile = new File(logfileName);
+                outstream = new FileOutputStream(logFile);
+            } catch (FileNotFoundException e)   {
+                System.err.println("logfile not found");
+            } 
+        }
     }
 
     private boolean isFinSegment(byte[] headers)  {
@@ -97,7 +102,7 @@ class Receiver  {
                     int seqNum = BitWrangler.toInt(Arrays.copyOfRange(received, 4, 8));
 
                     if (isFinSegment(Arrays.copyOfRange(received, 0, HEADERSIZE))) {
-                        log(sourcePort, destPort, seqNum, 0, true, false);
+                        Logger.log(sourcePort, destPort, seqNum, 0, true, false, outstream);
                         // find out which port the FIN segment came from
                         byte[] FINSourceBytes = Arrays.copyOfRange(received, 0, 2);
                         int FINSourcePort = BitWrangler.toInt(FINSourceBytes);
@@ -127,7 +132,7 @@ class Receiver  {
                             receivedSeqNum++;
                         }   //done writing buffered data and updating buffer
                     }
-                   log(sourcePort, destPort, seqNum, 0, false, false); 
+                   Logger.log(sourcePort, destPort, seqNum, 0, false, false, outstream); 
                 }   // not corrupted
                 sendACK(socket);
             }
@@ -140,26 +145,7 @@ class Receiver  {
             return false;
         }
     }
-
-    private void log(int sourcePort, int destPort, int seqNum, int ackNum, boolean isFIN, boolean isACK) {
-        int ACK, FIN;
-        if (isACK)
-            ACK = ACK_IN_SENT;
-        else
-            ACK = ACK_IN_RECEIVED;
-        if (isFIN)
-            FIN = 1;
-        else
-            FIN = 0;
-        StringBuilder sb = new StringBuilder();
-        sb.append(System.currentTimeMillis()).append("\t").append(sourcePort)
-          .append("\t").append(destPort).append("\t").append(seqNum).append("\t")
-          .append(ackNum).append("\t").append(URG).append("\t").append(ACK)
-          .append("\t").append(PSH).append("\t").append(RST).append("\t")
-          .append(SYN).append("\t").append(FIN);
-        System.out.println(sb.toString());
-    }
-
+ 
     private void sendACK(DatagramSocket socket)    {
         byte[] header = getHeader();
         DatagramPacket ack = new DatagramPacket(header, header.length, destIP, destPort);
@@ -178,8 +164,8 @@ class Receiver  {
             int listeningPort = Integer.parseInt(args[1]);
             String senderIPStr = args[2];
             int senderPort = Integer.parseInt(args[3]);
-            String logfileName = args[4];
-            Receiver tcplikeReceiver = new Receiver(listeningPort, senderIPStr, senderPort);
+            String logfileName = args[4]; 
+            Receiver tcplikeReceiver = new Receiver(listeningPort, senderIPStr, senderPort, logfileName);
             boolean succeeded = tcplikeReceiver.writeFile(outfileName, logfileName);
             if (succeeded)
                 System.out.println("Delivery completed successfully");
